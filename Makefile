@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2019 Xingwang Liao
+# Copyright (C) 2019-2020 Xingwang Liao
 #
 # This is free software, licensed under the GNU General Public License v2.
 # See /LICENSE for more information.
@@ -8,12 +8,12 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=v2ray-core
-PKG_VERSION:=4.20.0
-PKG_RELEASE:=3
+PKG_VERSION:=4.23.1
+PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
 PKG_SOURCE_URL:=https://codeload.github.com/v2ray/v2ray-core/tar.gz/v$(PKG_VERSION)?
-PKG_HASH:=579a7098b8f6cc68c3f94c5453fa274299f8b072736f364654298bd4cf57d24e
+PKG_HASH:=474b3aeed069d9867f7603a0544abcc0f31386cef9254423577ab752fc8d4dcc
 
 PKG_LICENSE:=MIT
 PKG_LICENSE_FILES:=LICENSE
@@ -56,25 +56,28 @@ PKG_USE_MIPS16:=0
 
 GO_PKG:=v2ray.com/core
 GO_PKG_LDFLAGS:=-s -w
+GO_PKG_LDFLAGS_X:= \
+	v2ray.com/core.version=$(PKG_VERSION) \
+	v2ray.com/core.build=R$(PKG_RELEASE) \
+	v2ray.com/core.codename=OpenWrt
 
 include $(INCLUDE_DIR)/package.mk
 include $(TOPDIR)/feeds/packages/lang/golang/golang-package.mk
 
-define Package/v2ray-core
+define Package/$(PKG_NAME)
   TITLE:=A platform for building proxies
   URL:=https://www.v2ray.com
   SECTION:=net
   CATEGORY:=Network
   SUBMENU:=Project V
-  USERID:=v2ray=10800:v2ray=10800
   DEPENDS:=$(GO_ARCH_DEPENDS) +ca-certificates
 endef
 
-define Package/v2ray-core/config
+define Package/$(PKG_NAME)/config
 	source "$(SOURCE)/Config.in"
 endef
 
-define Package/v2ray-core/description
+define Package/$(PKG_NAME)/description
 Project V is a set of network tools that help you to build your own computer network.
 It secures your network connections and thus protects your privacy.
 
@@ -101,7 +104,8 @@ endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_LOG),y)
 V2RAY_SED_ARGS += \
-	s/_ "v2ray.com\/core\/app\/log"/\/\/ &/;
+	s/_ "v2ray.com\/core\/app\/log"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/app\/log\/command"/\/\/ &/;
 endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_POLICY),y)
@@ -121,7 +125,8 @@ endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_STATISTICS),y)
 V2RAY_SED_ARGS += \
-	s/_ "v2ray.com\/core\/app\/stats"/\/\/ &/;
+	s/_ "v2ray.com\/core\/app\/stats"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/app\/stats\/command"/\/\/ &/;
 endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_BLACKHOLE_PROTO),y)
@@ -187,7 +192,8 @@ endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_HTTP2_TRANS),y)
 V2RAY_SED_ARGS += \
-	s/_ "v2ray.com\/core\/transport\/internet\/http"/\/\/ &/;
+	s/_ "v2ray.com\/core\/transport\/internet\/http"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/http"/\/\/ &/;
 endif
 
 ifeq ($(CONFIG_V2RAY_DISABLE_DOMAIN_SOCKET_TRANS),y)
@@ -198,6 +204,16 @@ endif
 ifeq ($(CONFIG_V2RAY_DISABLE_QUIC_TRANS),y)
 V2RAY_SED_ARGS += \
 	s/_ "v2ray.com\/core\/transport\/internet\/quic"/\/\/ &/;
+endif
+
+ifeq ($(CONFIG_V2RAY_DISABLE_MKCP_TRANS)$(CONFIG_V2RAY_DISABLE_QUIC_TRANS),yy)
+V2RAY_SED_ARGS += \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/noop"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/srtp"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/tls"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/utp"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/wechat"/\/\/ &/; \
+	s/_ "v2ray.com\/core\/transport\/internet\/headers\/wireguard"/\/\/ &/;
 endif
 
 endif
@@ -223,18 +239,14 @@ define Download/geosite.dat
 endef
 
 define Build/Prepare
-	$(Build/Prepare/Default)
+	$(call Build/Prepare/Default)
 
+ifneq ($(CONFIG_V2RAY_EXCLUDE_ASSETS),y)
 	# move file to make sure download new file every build
 	mv -f $(DL_DIR)/$(GEOIP_FILE) $(PKG_BUILD_DIR)/release/config/geoip.dat
 	mv -f $(DL_DIR)/$(GEOSITE_FILE) $(PKG_BUILD_DIR)/release/config/geosite.dat
+endif
 
-	( \
-		sed -i \
-			's/\(version[[:space:]]*=[[:space:]]*"\).*\("\)/\1$(PKG_VERSION)\2/; \
-			s/\(build[[:space:]]*=[[:space:]]*"\).*\("\)/\1OpenWrt - Release $(PKG_RELEASE)\2/' \
-			$(PKG_BUILD_DIR)/core.go ; \
-	)
 ifneq ($(V2RAY_SED_ARGS),)
 	( \
 		sed -i \
@@ -250,7 +262,7 @@ define Build/Compile
 	mv -f $(GO_PKG_BUILD_BIN_DIR)/main $(GO_PKG_BUILD_BIN_DIR)/v2ray
 
 ifeq ($(CONFIG_V2RAY_COMPRESS_UPX),y)
-	upx --ultra-brute $(GO_PKG_BUILD_BIN_DIR)/v2ray
+	upx --lzma --best $(GO_PKG_BUILD_BIN_DIR)/v2ray
 endif
 
 ifneq ($(CONFIG_V2RAY_EXCLUDE_V2CTL),y)
@@ -259,22 +271,20 @@ ifneq ($(CONFIG_V2RAY_EXCLUDE_V2CTL),y)
 	mv -f $(GO_PKG_BUILD_BIN_DIR)/main $(GO_PKG_BUILD_BIN_DIR)/v2ctl
 
 ifeq ($(CONFIG_V2RAY_COMPRESS_UPX),y)
-	upx --ultra-brute $(GO_PKG_BUILD_BIN_DIR)/v2ctl
+	upx --lzma --best $(GO_PKG_BUILD_BIN_DIR)/v2ctl
 endif
 endif
 endef
 
-define Package/v2ray-core/install
+define Package/$(PKG_NAME)/install
+	$(call GoPackage/Package/Install/Bin,$(PKG_INSTALL_DIR))
+
 	$(INSTALL_DIR) $(1)/usr/bin
 
-	$(INSTALL_BIN) \
-		$(GO_PKG_BUILD_BIN_DIR)/v2ray \
-		$(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/v2ray $(1)/usr/bin
 
 ifneq ($(CONFIG_V2RAY_EXCLUDE_V2CTL),y)
-	$(INSTALL_BIN) \
-		$(GO_PKG_BUILD_BIN_DIR)/v2ctl \
-		$(1)/usr/bin
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/v2ctl $(1)/usr/bin
 endif
 
 ifneq ($(CONFIG_V2RAY_EXCLUDE_ASSETS),y)
@@ -284,7 +294,10 @@ ifneq ($(CONFIG_V2RAY_EXCLUDE_ASSETS),y)
 endif
 endef
 
+ifneq ($(CONFIG_V2RAY_EXCLUDE_ASSETS),y)
 $(eval $(call Download,geoip.dat))
 $(eval $(call Download,geosite.dat))
+endif
+
 $(eval $(call GoBinPackage,v2ray-core))
 $(eval $(call BuildPackage,v2ray-core))
